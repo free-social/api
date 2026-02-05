@@ -1,5 +1,6 @@
 import Transaction, { CategoryType, ITransaction } from "../models/Transaction";
 import moment from "moment-timezone";
+import { Types } from "mongoose";
 
 // Interface for the filters coming from the Controller/URL
 export interface TransactionFilters {
@@ -118,23 +119,28 @@ export class TransactionService {
 
   static async getDailyTransactions(userId: string, date?: Date) {
     try {
-      // 1. Fix Typo: Use "Asia/Phnom_Penh"
+      // 1. Establish the target date in the specific timezone
+      // If 'date' is provided, we treat it as that day in Asia/Phnom_Penh.
+      // If not, we take the current moment in Asia/Phnom_Penh.
       const targetDate = date
         ? moment(date).tz("Asia/Phnom_Penh")
         : moment().tz("Asia/Phnom_Penh");
 
-      // 2. Calculate range in UTC+7 context
+      // 2. Define the exact boundaries (00:00:00 to 23:59:59)
+      // We use .toDate() which Mongoose will correctly translate back to UTC for the DB query.
       const startOfDay = targetDate.clone().startOf("day").toDate();
       const endOfDay = targetDate.clone().endOf("day").toDate();
 
-      // 3. Query the 'date' field, NOT 'createdAt'
-      // If your schema uses 'transactionDate' or just 'date', use that here.
+      // 3. Query using the 'date' field
+      // .lean() is added to improve performance for read-only operations
       const transactions = await Transaction.find({
         user: userId,
-        date: { $gte: startOfDay, $lte: endOfDay }, // CHANGED from createdAt
-      }).sort({ date: -1 }); // Sort by the actual date, not creation time
+        date: { $gte: startOfDay, $lte: endOfDay },
+      })
+        .sort({ date: -1 })
+        .lean();
 
-      // Calculate total
+      // 4. Calculate total (ensuring amount is treated as a number)
       const total = transactions.reduce(
         (sum, t) => sum + (Number(t.amount) || 0),
         0,
@@ -143,11 +149,12 @@ export class TransactionService {
       return {
         total,
         date: targetDate.format("YYYY-MM-DD"),
+        count: transactions.length,
         transactions,
       };
     } catch (err: any) {
       throw new Error(
-        "Something went wrong in getDailyTransactions: " + err.message,
+        `Something went wrong in getDailyTransactions: ${err.message}`,
       );
     }
   }
@@ -158,31 +165,33 @@ export class TransactionService {
     year?: number,
   ) {
     try {
-      // 1. Fix Typo: Use "Asia/Phnom_Penh"
       const now = moment().tz("Asia/Phnom_Penh");
-
-      // 1-indexed month fallback
       const m = month && month >= 1 && month <= 12 ? month : now.month() + 1;
       const y = year || now.year();
 
-      // 2. Create the start of the month correctly in the Timezone
-      // Note: We use string format "YYYY-MM" to let moment handle the parsing safely in the TZ
-      const targetMonth = moment.tz(
-        `${y}-${m.toString().padStart(2, "0")}-01`,
-        "YYYY-MM-DD",
-        "Asia/Phnom_Penh",
-      );
+      // Force the start of the month to 00:00:00.000 in Cambodia time
+      const startOfMonth = moment
+        .tz(
+          `${y}-${m.toString().padStart(2, "0")}-01`,
+          "YYYY-MM-DD",
+          "Asia/Phnom_Penh",
+        )
+        .startOf("month");
 
-      const startOfMonth = targetMonth.clone().startOf("month").toDate();
-      const endOfMonth = targetMonth.clone().endOf("month").toDate();
+      // Create the exact range
+      const startJS = startOfMonth.toDate();
+      const endJS = startOfMonth.clone().endOf("month").toDate();
 
-      // 3. Query the 'date' field, NOT 'createdAt'
       const transactions = await Transaction.find({
         user: userId,
-        date: { $gte: startOfMonth, $lte: endOfMonth }, // CHANGED from createdAt
-      }).sort({ date: -1 }); // CHANGED sort to date
+        date: {
+          $gte: startJS,
+          $lte: endJS,
+        },
+      })
+        .sort({ date: -1 })
+        .lean();
 
-      // Calculate total
       const total = transactions.reduce(
         (sum, t) => sum + (Number(t.amount) || 0),
         0,
@@ -190,14 +199,15 @@ export class TransactionService {
 
       return {
         total,
-        month: targetMonth.format("MMMM"), // This will give "January", "February", etc.
+        month: startOfMonth.format("MMMM"),
         year: y,
+        count: transactions.length, // Useful for debugging
         transactions,
       };
     } catch (e: any) {
-      throw new Error(
-        "Something went wrong in getMonthlyTransactions: " + e.message,
-      );
+      throw new Error("Monthly query failed: " + e.message);
     }
   }
+
+
 }
