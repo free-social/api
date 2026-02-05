@@ -1,0 +1,21 @@
+services:
+  api:
+    build: 
+      context: .
+      target: builder  # <--- CRITICAL: Stops at Stage 1 (Where nodemon lives)
+      args:
+        NODE_ENV: development
+    
+    ports:
+      - "4001:4001"  # Maps localhost:4001 to container:4001
+    
+    env_file:
+      - .env
+
+    # 1. Sync files so you can edit code on your laptop
+    volumes:
+      - .:/app
+      - /app/node_modules # PROTECTS the container's installed modules
+
+    # 2. Run in Dev Mode
+    command: nodemon src/index.ts
