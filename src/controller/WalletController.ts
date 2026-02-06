@@ -1,8 +1,7 @@
 import { Request, Response } from "express";
 import { WalletService } from "../service/Wallet";
 
-// 1. LOCAL FIX: We define the interface right here.
-// This tells TypeScript "req.user" definitely exists in this file.
+// Local Interface for Authenticated Requests
 interface AuthenticatedRequest extends Request {
   user?: {
     id: string;
@@ -11,26 +10,33 @@ interface AuthenticatedRequest extends Request {
 
 export class WalletController {
   /**
-   * Create a wallet
-   * Body: { amount: number }
+   * CREATE Wallet
+   * Body: { balance?: number }
+   * Logic: Creates a new wallet. Defaults to 0 if no balance provided.
    */
   static async create(req: AuthenticatedRequest, res: Response) {
     try {
       if (!req.user) return res.status(401).json({ error: "User not authenticated" });
 
-      const amount = Number(req.body.amount);
-      if (isNaN(amount)) return res.status(400).json({ error: "Invalid amount" });
+      // Default to 0 if user doesn't send a balance
+      const initialBalance = req.body.balance ? Number(req.body.balance) : 0;
+      
+      if (isNaN(initialBalance)) return res.status(400).json({ error: "Invalid balance amount" });
 
-      const wallet = await WalletService.createWallet(req.user.id, amount);
+      const wallet = await WalletService.createWallet(req.user.id, initialBalance);
       res.status(201).json(wallet);
     } catch (err: any) {
-      res.status(500).json({ error: err.message || "Something went wrong" });
+      // Handle "Wallet already exists" specifically
+      if (err.message.includes("exists")) {
+        return res.status(409).json({ error: err.message });
+      }
+      res.status(500).json({ error: err.message || "Failed to create wallet" });
     }
   }
 
   /**
-   * Get wallet summary
-   * Calculates total spent and remaining
+   * GET Wallet
+   * Logic: Returns wallet. Auto-creates one if missing (Self-healing).
    */
   static async get(req: AuthenticatedRequest, res: Response) {
     try {
@@ -39,40 +45,63 @@ export class WalletController {
       const wallet = await WalletService.getWallet(req.user.id);
       res.json(wallet);
     } catch (err: any) {
-      res.status(500).json({ error: err.message || "Something went wrong" });
+      res.status(500).json({ error: err.message || "Failed to fetch wallet" });
     }
   }
 
   /**
-   * Update wallet amount
-   * Body: { amount: number }
-   * If wallet does not exist, creates it
+   * SET Balance (Hard Reset)
+   * Method: PUT
+   * Body: { balance: number }
+   * Logic: "My wallet has exactly $500 now." (Overwrites old value)
    */
-  static async update(req: AuthenticatedRequest, res: Response) {
+  static async setBalance(req: AuthenticatedRequest, res: Response) {
     try {
       if (!req.user) return res.status(401).json({ error: "User not authenticated" });
 
-      const amount = Number(req.body.amount);
-      if (isNaN(amount)) return res.status(400).json({ error: "Invalid amount" });
+      const newBalance = Number(req.body.balance);
+      if (isNaN(newBalance)) return res.status(400).json({ error: "Invalid balance amount" });
 
-      const wallet = await WalletService.updateWallet(req.user.id, amount);
+      const wallet = await WalletService.setBalance(req.user.id, newBalance);
       res.json(wallet);
     } catch (err: any) {
-      res.status(500).json({ error: err.message || "Something went wrong" });
+      res.status(500).json({ error: err.message || "Failed to update balance" });
     }
   }
 
   /**
-   * Delete wallet
+   * TOP UP / SPEND (Adjust Balance)
+   * Method: PATCH
+   * Body: { amount: number }
+   * Logic: "Add $50" (amount: 50) or "Subtract $20" (amount: -20)
+   */
+  static async adjustBalance(req: AuthenticatedRequest, res: Response) {
+    try {
+      if (!req.user) return res.status(401).json({ error: "User not authenticated" });
+
+      const amountToChange = Number(req.body.amount);
+      if (isNaN(amountToChange)) return res.status(400).json({ error: "Invalid amount" });
+
+      const wallet = await WalletService.adjustBalance(req.user.id, amountToChange);
+      res.json(wallet);
+    } catch (err: any) {
+      if (err.message === "Insufficient funds") {
+        return res.status(400).json({ error: "Insufficient funds" });
+      }
+      res.status(500).json({ error: err.message || "Failed to adjust balance" });
+    }
+  }
+
+  /**
+   * DELETE Wallet
    */
   static async delete(req: AuthenticatedRequest, res: Response) {
     try {
       if (!req.user) return res.status(401).json({ error: "User not authenticated" });
 
       await WalletService.deleteWallet(req.user.id);
-      res.json({ message: "Wallet deleted" });
+      res.json({ message: "Wallet deleted successfully" });
     } catch (err: any) {
-      // Improved error handling: Return 404 if wallet missing
       if (err.message === "Wallet not found") {
         return res.status(404).json({ error: "Wallet not found" });
       }
