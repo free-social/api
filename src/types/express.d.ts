@@ -1,10 +1,10 @@
-import { Express } from 'express';
+// src/types/express/index.d.ts
+
+export {}; // <--- This is required. Do NOT import 'express' here.
 
 declare global {
   namespace Express {
     interface Request {
-      // 1. Define what 'user' looks like
-      // We know from your token that it contains an 'id'
       user?: {
         id: string;
       };
