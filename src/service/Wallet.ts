@@ -40,7 +40,7 @@ export class WalletService {
   static async setBalance(userId: string, newBalance: number) {
     const wallet = await Wallet.findOneAndUpdate(
       { user: userId },
-      { balance: newBalance }, // Completely replaces the old value
+      { balance: newBalance }, 
       { new: true, upsert: true }
     );
     return wallet;

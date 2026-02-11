@@ -24,6 +24,9 @@ app.use('/api/v1/auth', AuthRoutes)
 app.use('/api/v1/transactions', TransactionRoutes)
 app.use('/api/v1/wallet', WalletRoutes)
 
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
 
 setupSwagger(app)
 
