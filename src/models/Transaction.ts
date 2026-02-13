@@ -1,5 +1,6 @@
 import { Schema, Document, model, Types } from "mongoose";
 import mongoosePaginate from "mongoose-paginate-v2";
+import moment from "moment-timezone";
 
 
 export enum CategoryType {
@@ -37,7 +38,7 @@ const transactionSchema = new Schema<ITransaction>(
     date: {
       type: Date,
       required: true,
-      default: Date.now, // Defaults to today if not provided
+      default: () => moment().tz("Asia/Phnom_Penh").toDate(),
     },
     description: {
       type: String,
