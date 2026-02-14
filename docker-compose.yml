@@ -6,16 +6,29 @@ services:
       args:
         NODE_ENV: development
     
+    container_name: api-v1
+    restart: always
+
     ports:
       - "4001:4001"  # Maps localhost:4001 to container:4001
     
     env_file:
       - .env
 
-    # 1. Sync files so you can edit code on your laptop
     volumes:
-      - .:/app
-      - /app/node_modules # PROTECTS the container's installed modules
+      - .:/app                # Mount project code for live editing
+      - /app/node_modules     # Protect installed modules
 
-    # 2. Run in Dev Mode
-    command: nodemon src/index.ts
+    # Run nodemon with stable watch
+    command: nodemon --legacy-watch src/index.ts
+
+  nginx:
+    image: nginx:latest
+    container_name: nginx_proxy
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api
